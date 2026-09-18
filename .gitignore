@@ -1,0 +1,25 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+
+# secrets and local environment
+.env
+
+# Claude Code local files
+.claude/
+CLAUDE.md
+
+# real uploaded exercise photos, not ours to publish
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# imported exercise thumbnails, not covered by the dataset license, see the
+# credit note at the top of db/seed_exercises.sql
+backend/seed_photos/
+
+# personal deploy details and prototype references, not needed to run the app
+deploy.sh
+WorkItOut.jsx
+Layout and visualizations review/
+Layout and visualizations review.zip

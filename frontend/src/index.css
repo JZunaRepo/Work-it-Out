@@ -1,0 +1,29 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  /* Matches c.softStone (theme.js) -- without this the document background
+     defaults to browser white, which shows through as a mismatched white
+     bar at the safe-area/status-bar edge on a phone instead of the app's
+     own background. food-tracker's index.css does the same for its (dark)
+     background for the same reason. */
+  background-color: #eeece7;
+}
+
+body {
+  margin: 0;
+  font-family: "Unica77 Cohere Web", "Inter", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
