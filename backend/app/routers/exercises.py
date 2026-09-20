@@ -36,10 +36,13 @@ async def list_exercises(
     conditions = ["deleted_at IS NULL"]
     params: list = []
     if q:
-        params.append(f"%{q}%")
-        conditions.append(
-            f"((name || ' — ' || equipment) ILIKE ${len(params)} OR muscle_group ILIKE ${len(params)})"
-        )
+        # Match each typed word independently against the combined searchable text, rather
+        # than the whole query as one substring — so "chest lever" matches "Lever Chest
+        # Press" regardless of what order the words were typed in.
+        searchable = "(name || ' ' || equipment || ' ' || muscle_group)"
+        for word in q.split():
+            params.append(f"%{word}%")
+            conditions.append(f"{searchable} ILIKE ${len(params)}")
     if muscle_group:
         params.append(muscle_group)
         conditions.append(f"muscle_group = ${len(params)}")

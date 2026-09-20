@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Pencil } from "lucide-react";
 import { api } from "../api";
 import { c, radius } from "../theme";
 import AddExercisePanel from "./AddExercisePanel";
 import CelebrationModal from "./CelebrationModal";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import ExerciseCard from "./ExerciseCard";
+import ExercisePreviewModal from "./ExercisePreviewModal";
 
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 const MONTH_LABELS = [
@@ -44,6 +45,21 @@ function weekRangeLabel(weekStart) {
   return `${startMonth} ${weekStart.getDate()} – ${endMonth} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
 }
 
+function shortDateLabel(d) {
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// Persisted the same way the active tab is (see App.jsx), so a copied day's workout
+// survives a tab switch or a reload instead of only living in this component's state.
+function readStoredClipboard() {
+  try {
+    const raw = localStorage.getItem("wio-clipboard");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LogScreen({ profile }) {
   const today = new Date();
   const [weekStart, setWeekStart] = useState(startOfWeek(today));
@@ -55,6 +71,8 @@ export default function LogScreen({ profile }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [celebration, setCelebration] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [previewId, setPreviewId] = useState(null);
+  const [clipboard, setClipboard] = useState(readStoredClipboard);
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -154,6 +172,63 @@ export default function LogScreen({ profile }) {
     setExpanded(false);
   };
 
+  const copyDay = () => {
+    const entry = {
+      sourceLabel: shortDateLabel(selectedDay),
+      exercises: exercises.map((e) => ({
+        exercise_id: e.exercise_id,
+        full_name: e.full_name,
+        sets: e.sets.map((s) => ({ ...s })),
+      })),
+    };
+    setClipboard(entry);
+    try {
+      localStorage.setItem("wio-clipboard", JSON.stringify(entry));
+    } catch {
+      /* noop */
+    }
+  };
+
+  const pasteDay = () => {
+    if (!clipboard) return;
+    setSaved(false);
+    setExpanded(false);
+    setExercises((prev) => {
+      const existingIds = new Set(prev.map((e) => e.exercise_id));
+      const toAdd = clipboard.exercises
+        .filter((e) => !existingIds.has(e.exercise_id))
+        .map((e) => ({
+          id: e.exercise_id,
+          exercise_id: e.exercise_id,
+          full_name: e.full_name,
+          sets: e.sets.map((s) => ({ ...s })),
+        }));
+      return [...prev, ...toAdd];
+    });
+    // One-shot: pasting consumes the clipboard so the button doesn't keep resurfacing
+    // on every other day, wanted or not — copy again for another paste.
+    setClipboard(null);
+    try {
+      localStorage.removeItem("wio-clipboard");
+    } catch {
+      /* noop */
+    }
+  };
+
+  // "top"/"bottom" rather than single-step up/down — with only a handful of exercises
+  // logged per day, jumping straight to either end is more useful than nudging one at a time.
+  const moveExercise = (exerciseId, direction) => {
+    setExercises((prev) => {
+      const idx = prev.findIndex((e) => e.id === exerciseId);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      if (direction === "top") next.unshift(item);
+      else next.push(item);
+      return next;
+    });
+  };
+
   const saveWorkout = async () => {
     const payload = exercises.map((e) => ({
       exercise_id: e.exercise_id,
@@ -223,21 +298,26 @@ export default function LogScreen({ profile }) {
             <span style={{ fontSize: 13, color: c.ink, fontWeight: 500 }}>
               {selectedDay.toLocaleDateString(undefined, { weekday: "short", month: "long", day: "numeric" })}
             </span>
-            {saved && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ fontSize: 11, color: c.mauve, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Check size={13} /> Logged
-                </span>
-                <Pencil size={14} color={c.muted} style={{ cursor: "pointer" }} onClick={startEditing} />
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {exercises.length > 0 && (
+                <Copy size={14} color={c.muted} style={{ cursor: "pointer" }} onClick={copyDay} title="Copy this day's exercises" />
+              )}
+              {saved && (
+                <>
+                  <span style={{ fontSize: 11, color: c.mauve, display: "flex", alignItems: "center", gap: 4 }}>
+                    <Check size={13} /> Logged
+                  </span>
+                  <Pencil size={14} color={c.muted} style={{ cursor: "pointer" }} onClick={startEditing} />
+                </>
+              )}
+            </div>
           </div>
 
           {loading && <div style={{ fontSize: 12, color: c.muted, padding: "8px 0" }}>Loading…</div>}
 
           {!loading &&
             (showEditableCards || showLoggedCards) &&
-            exercises.map((ex) => (
+            exercises.map((ex, i) => (
               <ExerciseCard
                 key={ex.id}
                 exercise={ex}
@@ -246,6 +326,10 @@ export default function LogScreen({ profile }) {
                 onSetChange={setChange}
                 onDelete={setDeleteTarget}
                 onEdit={startEditing}
+                onPreview={setPreviewId}
+                onMove={moveExercise}
+                canMoveUp={i > 0}
+                canMoveDown={i < exercises.length - 1}
               />
             ))}
 
@@ -258,11 +342,13 @@ export default function LogScreen({ profile }) {
                 {exercises.map((e, i) => (
                   <div
                     key={e.id}
+                    onClick={() => setPreviewId(e.exercise_id)}
                     style={{
                       fontSize: 12,
                       color: c.ink,
                       padding: "6px 0",
                       borderBottom: i < exercises.length - 1 ? `1px solid ${c.hairline}` : "none",
+                      cursor: "pointer",
                     }}
                   >
                     {e.full_name}
@@ -287,6 +373,18 @@ export default function LogScreen({ profile }) {
             </button>
           )}
 
+          {!loading && showEditableCards && clipboard && clipboard.exercises.some((e) => !exercises.some((x) => x.exercise_id === e.exercise_id)) && (
+            <button
+              onClick={pasteDay}
+              style={{ width: "100%", background: c.canvas, border: `1px dashed ${c.mauveSoft}`, color: c.mauve, borderRadius: radius.md, padding: "12px 16px", marginBottom: 12, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+            >
+              <ClipboardPaste size={13} />
+              <span style={{ fontSize: 13 }}>
+                Paste {clipboard.exercises.length} exercise{clipboard.exercises.length !== 1 ? "s" : ""} copied from {clipboard.sourceLabel}
+              </span>
+            </button>
+          )}
+
           {!loading && showEditableCards && <AddExercisePanel exercises={exercises} onPick={pickExercise} profileId={profile.id} />}
 
           {!loading && showEditableCards && (
@@ -307,6 +405,7 @@ export default function LogScreen({ profile }) {
           />
         )}
         {celebration && <CelebrationModal data={celebration} onContinue={() => setCelebration(null)} />}
+        {previewId && <ExercisePreviewModal exerciseId={previewId} onClose={() => setPreviewId(null)} />}
       </div>
     </div>
   );

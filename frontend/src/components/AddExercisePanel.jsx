@@ -1,21 +1,39 @@
 import { useEffect, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
 import { api } from "../api";
+import { matchesQuery } from "../search";
 import { c, radius } from "../theme";
 
 export default function AddExercisePanel({ exercises, onPick, profileId }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
+  const [recent, setRecent] = useState([]);
+  const [libraryResults, setLibraryResults] = useState(null);
+  const [searching, setSearching] = useState(false);
 
+  // Typing always filters the recent list locally — the full library is only searched
+  // once Enter is pressed, so results don't jump straight to all 1,300+ exercises on
+  // the first keystroke.
   useEffect(() => {
     if (!open) return;
-    const handle = setTimeout(() => {
-      const fetcher = query.trim() ? api.getExercises({ q: query }) : api.getRecentExercises(profileId);
-      fetcher.then(setResults).catch(() => setResults([]));
-    }, 200);
-    return () => clearTimeout(handle);
-  }, [query, open, profileId]);
+    api.getRecentExercises(profileId).then(setRecent).catch(() => setRecent([]));
+  }, [open, profileId]);
+
+  useEffect(() => {
+    // Any edit to the query invalidates a previous Enter-triggered library search —
+    // back to filtering recent exercises until Enter is pressed again.
+    setLibraryResults(null);
+  }, [query]);
+
+  const searchLibrary = () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    api
+      .getExercises({ q: query })
+      .then(setLibraryResults)
+      .catch(() => setLibraryResults([]))
+      .finally(() => setSearching(false));
+  };
 
   if (!open) {
     return (
@@ -29,6 +47,9 @@ export default function AddExercisePanel({ exercises, onPick, profileId }) {
     );
   }
 
+  const showingLibrary = libraryResults !== null;
+  const results = showingLibrary ? libraryResults : recent.filter((r) => matchesQuery(r.full_name + " " + r.muscle_group, query));
+
   return (
     <div style={{ background: c.canvas, borderRadius: radius.md, padding: 12, marginBottom: 12, border: `1px solid ${c.hairline}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, background: c.paleMauve, borderRadius: radius.xs, padding: "8px 10px", marginBottom: 8 }}>
@@ -37,6 +58,9 @@ export default function AddExercisePanel({ exercises, onPick, profileId }) {
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") searchLibrary();
+          }}
           placeholder="Search by name or muscle group…"
           style={{ border: "none", background: "transparent", fontSize: 11, color: c.ink, flex: 1, outline: "none" }}
         />
@@ -53,6 +77,7 @@ export default function AddExercisePanel({ exercises, onPick, profileId }) {
                   onPick(r);
                   setOpen(false);
                   setQuery("");
+                  setLibraryResults(null);
                 }
               }}
               style={{
@@ -75,7 +100,13 @@ export default function AddExercisePanel({ exercises, onPick, profileId }) {
         })}
         {results.length === 0 && (
           <div style={{ fontSize: 11, color: c.muted, padding: "6px 9px" }}>
-            {query.trim() ? "No matches." : "No previously used exercises yet — type to search the full library."}
+            {searching
+              ? "Searching…"
+              : showingLibrary
+              ? "No matches."
+              : query.trim()
+              ? "No matches in your recent exercises — press Enter to search the full library."
+              : "No previously used exercises yet — type to search the full library."}
           </div>
         )}
       </div>
