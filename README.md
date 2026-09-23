@@ -91,6 +91,6 @@ This repository does not include the exercise thumbnail photos. The exercise nam
 
 ## Acknowledgments
 
-Diana, for shaping how this app actually works and looks, from the profile picker down to the little celebration screen when you hit a new PR. Co author on this project, not just the person it was built for.
+Diana, for shaping how this app actually works and looks, from the profile picker down to the little celebration screen when you hit a new PR. Co author on this project.
 
 Thank you to [hasaneyldrm](https://github.com/hasaneyldrm) for putting together the exercises-dataset that this app's exercise library is built from.
